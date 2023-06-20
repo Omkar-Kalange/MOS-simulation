@@ -1,0 +1,38 @@
+VIT-------------------------------------
+VIT-------------------------------------
+IS SAME---------------------------------
+Normal Termination
+IC: 13, IR: H---, TTL: 15, TTC: 15, TLL: 3, LLC: 3, SI: 0, TI: 2, PI: 0
+
+
+VIT-------------------------------------
+VIT-------------------------------------
+Abnormal Termination: Time Limit Exceeded
+IC: 09, IR: BT11, TTL: 12, TTC: 12, TLL: 3, LLC: 2, SI: 0, TI: 2, PI: 0
+
+
+VIT-------------------------------------
+Abnormal Termination: Line Limit Exceeded
+IC: 08, IR: PD30, TTL: 11, TTC: 11, TLL: 1, LLC: 2, SI: 2, TI: 2, PI: 0
+Abnormal Termination: Time Limit Exceeded
+IC: 08, IR: PD30, TTL: 11, TTC: 11, TLL: 1, LLC: 2, SI: 2, TI: 2, PI: 0
+
+
+Abnormal Termination: Operation Code Error
+IC: 05, IR: JR20, TTL: 13, TTC: 8, TLL: 3, LLC: 0, SI: 0, TI: 0, PI: 1
+
+
+Abnormal Termination: Invalid Page Fault
+IC: 07, IR: PD80, TTL: 5001, TTC: 10, TLL: 5000, LLC: 0, SI: 2, TI: 0, PI: 3
+
+
+Abnormal Termination: Time Limit Exceeded
+IC: 05, IR: LR-5, TTL: 8, TTC: 8, TLL: 3, LLC: 0, SI: 0, TI: 2, PI: 2
+Abnormal Termination: Operand Error
+IC: 05, IR: LR-5, TTL: 8, TTC: 8, TLL: 3, LLC: 0, SI: 0, TI: 2, PI: 2
+
+
+Abnormal Termination: Out Of Data
+IC: 04, IR: GD50, TTL: 15, TTC: 7, TLL: 3, LLC: 0, SI: 1, TI: 0, PI: 0
+
+
