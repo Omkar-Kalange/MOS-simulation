@@ -7,20 +7,20 @@ void simulation();
 int allocate();
 void MOS();
 void IR(int);
-void startExecution();
 void executeUserProgram();
 void addressMap();
+void Terminate(int EC1, int EC2=0);
 
 fstream input;
 fstream output;
 char M[300][4];
 int n_available_frames=30;
+int n_available_tracks=50;
 char drum[500][4];
-int Track_no = 0;
-int SI=3;   // service interrupt
-int TI=0;   //time interrupt
-int PI=0;   //programming interrupt
-int IOI=0; // Input-Output interrupt
+int SI;   // service interrupt
+int TI;   //time interrupt
+int PI;   //programming interrupt
+int IOI; // Input-Output interrupt
 int EM;
 int VA[2];
 int RA;
@@ -51,30 +51,40 @@ class CPU
 CPU* CPU::object = new CPU;
 CPU *cpu = CPU::getObject();
 
-
 struct PCB
 {
-    int PTR;
+    int PTR, IC=0;
+    int IO = 0; //0: NO I/O, 1: Read, 2: Write
 
     string JOB_ID;
     int TTL,TLL,TTC,LLC;
 
-    int T_ProgramCard=-10, T_DataCard=-10, T_OutputLines=-10;
+    vector <int> T_ProgramCard, T_DataCard, T_OutputLines;
     int n_ProgramCard=0, n_DataCard=0, n_OutputLines=0;
     char flag;      // P:Program card or D: Data Card
 
     int n_ProgramCard_copy=0, n_DataCard_copy=0, n_OutputLines_copy=0;
 
+    vector <int> TC; //Termination code
+
 } *pcb;
 
 struct ProgramQueue
 {
-    PCB *pcb;
+    PCB *pcb = new PCB;
     ProgramQueue* next=NULL;
-} *LQ=NULL, *RQ=NULL, *IOQ=NULL, *TQ=NULL;
+
+    ~ProgramQueue()
+    {
+        delete pcb;
+    }
+} *LQ = NULL, *RQ = NULL, *IOQ = NULL, *TQ = NULL, *SQ = NULL;
+
 
 void LQ_to_RQ()
 {
+    cout<<"                Loading complete for job "<<LQ->pcb->JOB_ID<<". Moving PCB to RQ. "<<endl;
+
     if(RQ)
     {
         struct ProgramQueue* temp = RQ;
@@ -94,22 +104,237 @@ void LQ_to_RQ()
 }
 
 
+void RQ_to_RQ()
+{
+    RQ->pcb->PTR = cpu->PTR[0]*1000+cpu->PTR[1]*100+cpu->PTR[2]*10+cpu->PTR[3];
+    RQ->pcb->IC = cpu->IC[0]*10+cpu->IC[1];
+
+    for(auto i=0;i<4;i++)
+    {
+        cpu->R[i]='-';
+        cpu->IR[i]='-';
+        cpu->PTR[i]='-';
+        if(i<2)
+            cpu->IC[i]='-';
+    }
+    cpu->C=0;
+
+    cout<<"        Time slice out for job "<<RQ->pcb->JOB_ID<<endl;
+
+    if(RQ->next)
+    {
+        struct ProgramQueue* temp = RQ;
+        while(temp->next)
+            temp = temp->next;
+        temp->next = RQ;
+        temp = temp->next;
+        RQ = RQ->next;
+        temp->next = NULL;
+    }
+}
+
+
+void RQ_to_IOQ()
+{
+    RQ->pcb->PTR = cpu->PTR[0]*1000+cpu->PTR[1]*100+cpu->PTR[2]*10+cpu->PTR[3];
+    RQ->pcb->IC = cpu->IC[0]*10+cpu->IC[1];
+
+    for(auto i=0;i<4;i++)
+    {
+        cpu->R[i]='-';
+        cpu->IR[i]='-';
+        cpu->PTR[i]='-';
+        if(i<2)
+            cpu->IC[i]='-';
+    }
+    cpu->C=0;
+
+    cout<<"        IO request for job "<<RQ->pcb->JOB_ID<<"."<<endl;
+
+    if(IOQ)
+    {
+        struct ProgramQueue* temp = IOQ;
+        while(temp->next)
+            temp = temp->next;
+        temp->next = RQ;
+        temp = temp->next;
+        RQ = RQ->next;
+        temp->next = NULL;
+    }
+    else
+    {
+        IOQ = RQ;
+        RQ = RQ->next;
+        IOQ->next = NULL;
+    }
+}
+
+
+void IOQ_to_RQ()
+{
+    cout<<"                IO request for job "<<IOQ->pcb->JOB_ID<<" completed."<<endl;
+
+    if(RQ)
+    {
+        struct ProgramQueue* temp = RQ;
+        while(temp->next)
+            temp = temp->next;
+        temp->next = IOQ;
+        temp = temp->next;
+        IOQ = IOQ->next;
+        temp->next = NULL;
+    }
+    else
+    {
+        RQ = IOQ;
+        IOQ = IOQ->next;
+        RQ->next = NULL;
+    }
+}
+
+
+void RQ_to_SQ()
+{
+    RQ->pcb->PTR = cpu->PTR[0]*1000+cpu->PTR[1]*100+cpu->PTR[2]*10+cpu->PTR[3];
+    RQ->pcb->IC = cpu->IC[0]*10+cpu->IC[1];
+
+    for(auto i=0;i<4;i++)
+    {
+        cpu->R[i]='-';
+        cpu->IR[i]='-';
+        cpu->PTR[i]='-';
+        if(i<2)
+            cpu->IC[i]='-';
+    }
+    cpu->C=0;
+
+    cout<<"        Suspending job "<<RQ->pcb->JOB_ID<<"."<<endl;
+
+    if(SQ)
+    {
+        struct ProgramQueue* temp = SQ;
+        while(temp->next)
+            temp = temp->next;
+        temp->next = RQ;
+        temp = temp->next;
+        RQ = RQ->next;
+        temp->next = NULL;
+    }
+    else
+    {
+        SQ = RQ;
+        RQ = RQ->next;
+        SQ->next = NULL;
+    }
+}
+
+
+void SQ_to_RQ()
+{
+    cout<<"        Suspend to Ready job "<<SQ->pcb->JOB_ID<<endl;
+
+    if(RQ)
+    {
+        struct ProgramQueue* temp = RQ;
+        while(temp->next)
+            temp = temp->next;
+        temp->next = SQ;
+        temp = temp->next;
+        SQ = SQ->next;
+        temp->next = NULL;
+    }
+    else
+    {
+        RQ = SQ;
+        SQ = SQ->next;
+        RQ->next = NULL;
+    }
+}
+
+
+void RQ_to_TQ()
+{
+    RQ->pcb->PTR = cpu->PTR[0]*1000+cpu->PTR[1]*100+cpu->PTR[2]*10+cpu->PTR[3];
+    RQ->pcb->IC = cpu->IC[0]*10+cpu->IC[1];
+
+    for(auto i=0;i<4;i++)
+    {
+        cpu->R[i]='-';
+        cpu->IR[i]='-';
+        cpu->PTR[i]='-';
+        if(i<2)
+            cpu->IC[i]='-';
+    }
+    cpu->C=0;
+
+    cout<<"        Terminating job "<<RQ->pcb->JOB_ID<<"."<<endl;
+
+    if(TQ)
+    {
+        struct ProgramQueue* temp = TQ;
+        while(temp->next)
+            temp = temp->next;
+        temp->next = RQ;
+        temp = temp->next;
+        RQ = RQ->next;
+        temp->next = NULL;
+    }
+    else
+    {
+        TQ = RQ;
+        RQ = RQ->next;
+        TQ->next = NULL;
+    }
+}
+
+
+void IOQ_to_TQ()
+{
+    cout<<"        IO request can't be fulfilled. Terminating job "<<IOQ->pcb->JOB_ID<<"."<<endl;
+
+    if(TQ)
+    {
+        struct ProgramQueue* temp = TQ;
+        while(temp->next)
+            temp = temp->next;
+        temp->next = IOQ;
+        temp = temp->next;
+        IOQ = IOQ->next;
+        temp->next = NULL;
+    }
+    else
+    {
+        TQ = IOQ;
+        IOQ = IOQ->next;
+        TQ->next = NULL;
+    }
+}
+
+
 class SupervisoryStorage
 {
     SupervisoryStorage();
     static SupervisoryStorage *object;
+
     struct node
     {
         char buff[40];
         struct node* next;
+
+        node()
+        {
+            for (int j=0; j<40; j++)
+                buff[j] = '-';
+
+            next = NULL;
+        }
     };
 
     public:
         node* temp;
-        struct node *ebq;
-        struct node *ifbq = NULL;
-        struct node *ofbq = NULL;
-
+        node *ebq = NULL;
+        node *ifbq = NULL;
+        node *ofbq = NULL;
         static SupervisoryStorage * getObject()
         {
             return SupervisoryStorage::object;
@@ -130,19 +355,9 @@ SupervisoryStorage::SupervisoryStorage()
     temp = ebq;
     for (int i=0; i<9; i++)
     {
-        for (int j=0; j<40; j++)
-            temp->buff[j] = '-';
-
-        temp->buff;
         temp->next = new node;
-
         temp = temp->next;
     }
-        for (int j=0; j<40; j++)
-            temp->buff[j] = '-';
-
-        temp->buff;
-        temp->next = NULL;
 }
 void SupervisoryStorage::ebq_to_ifbq()
 {
@@ -177,9 +392,11 @@ void SupervisoryStorage::last_ifb_to_ebq()
 
         if (ebq)
         {
-            temp->next->next = ebq;
-            ebq = temp->next;
+            node *temp2 = ebq;
+            while(temp2->next)
+                temp2 = temp2->next;
 
+            temp2->next = temp->next;
             temp->next = NULL;
         }
         else
@@ -195,9 +412,11 @@ void SupervisoryStorage::last_ifb_to_ebq()
 
         if (ebq)
         {
-            temp->next = ebq;
-            ebq = temp;
+            node *temp2 = ebq;
+            while(temp2->next)
+                temp2 = temp2->next;
 
+            temp2->next = temp;
             ifbq = NULL;
         }
         else
@@ -205,7 +424,6 @@ void SupervisoryStorage::last_ifb_to_ebq()
             ebq = temp;
             ifbq = NULL;
         }
-
     }
 }
 void SupervisoryStorage::first_ifb_to_ebq()
@@ -215,10 +433,13 @@ void SupervisoryStorage::first_ifb_to_ebq()
 
     if (ebq)
     {
-        temp = ifbq;
+        temp = ebq;
+        while(temp->next)
+            temp = temp->next;
+
+        temp->next = ifbq;
         ifbq = ifbq->next;
-        temp->next = ebq;
-        ebq = temp;
+        temp->next->next = NULL;
     }
     else
     {
@@ -279,61 +500,93 @@ void SupervisoryStorage::print_ofbq()
 SupervisoryStorage* SupervisoryStorage::object = new SupervisoryStorage();
 SupervisoryStorage* S = SupervisoryStorage::getObject();
 
-class Channel
+class CH1
 {
-    protected:
-        Channel(){}
     private:
-        static Channel* object1;
-        static Channel* object2;
-
+        CH1(){};
+        static CH1* object;
 
     public:
-        int flag = 0;
+        int flag = 0;   //0:stopped, 1:working
         int chTotalTime = 5;
         int chTimer;
 
-        static Channel* getObject1()
+        static CH1* getObject()
         {
-           return Channel::object1;
-        }
-        static Channel* getObject2()
-        {
-           return Channel::object2;
+           return CH1::object;
         }
         void startChannel()
         {
-            if(!flag)
-            {
-                chTimer = 0;
-            }
+            chTimer = 0;
             flag = 1;
+            IOI-=1;
         }
         void stopChannel()
         {
             flag = 0;
         }
 };
-Channel* Channel :: object1 = new Channel;
-Channel* Channel :: object2 = new Channel;
-Channel* ch1 = Channel::getObject1();
-Channel* ch2 = Channel::getObject2();
+CH1* CH1 :: object = new CH1;
+CH1* ch1 = CH1::getObject();
 
-class CH3: public Channel
+class CH2
 {
+    private:
+        CH2(){};
+        static CH2* object;
+
     public:
+        int flag = 0;   //0:stopped, 1:working
+        int chTotalTime = 5;
+        int chTimer;
+
+        static CH2* getObject()
+        {
+           return CH2::object;
+        }
+        void startChannel()
+        {
+            chTimer = 0;
+            flag = 1;
+            IOI-=2;
+        }
+        void stopChannel()
+        {
+            flag = 0;
+        }
+};
+CH2* CH2 :: object = new CH2;
+CH2* ch2 = CH2::getObject();
+
+class CH3
+{
+    private:
+        static CH3* object3;
+        CH3(){};
+
+    public:
+        int flag = 0;   //0:stopped, 1:working
         int chTotalTime = 2;
+        int chTimer;
         string Task="";
         static CH3* getObject3()
         {
            return CH3::object3;
         }
-    private:
-        static CH3* object3;
-        CH3(){};
+        void startChannel()
+        {
+            chTimer = 0;
+            flag = 1;
+            IOI-=4;
+        }
+        void stopChannel()
+        {
+            flag = 0;
+        }
 };
 CH3* CH3 :: object3 = new CH3;
 CH3* ch3 = CH3::getObject3();
+
 
 void init()
 {
@@ -344,7 +597,6 @@ void init()
         cpu->PTR[i]='-';
         if(i<2)
             cpu->IC[i]='-';
-
     }
     cpu->C=0;
 
@@ -364,19 +616,21 @@ void init()
         }
     }
 
-    SI=3;
+    SI=0;
     TI=0;
     PI=0;
+    IOI=1;
 
     Timer=0;
 }
+
 
 void simulation()
 {
     Timer++;
 
     cpu->TSC++;
-    if (cpu->TSC ==cpu->TS)
+    if (cpu->TSC == cpu->TS)
         TI = 1;
 
     if(ch1->flag)
@@ -412,12 +666,14 @@ void simulation()
     if(RQ)
     {
         RQ->pcb->TTC += 1;
+        if(RQ->pcb->TTC == RQ->pcb->TTL)
+            TI = 2;
     }
 }
 
+
 int allocate()
 {
-
     label:
 
     int allNum = rand()%30;
@@ -432,8 +688,84 @@ int allocate()
 
 void MOS()
 {
+    if(TI==1 && SI==0 && PI==0)
+    {
+        RQ_to_RQ();
+    }
+
+    if((TI==0 || TI==1) && SI==1)
+    {
+        RQ->pcb->IO = 1;
+        RQ_to_IOQ();
+    }
+    else if((TI==0 || TI==1) && SI==2)
+    {
+        RQ->pcb->IO = 2;
+        RQ_to_IOQ();
+    }
+    else if((TI==0 || TI==1) && SI==3)
+    {
+        RQ->pcb->TC.push_back(0);
+        RQ_to_TQ();
+    }
+    else if(TI==2 && SI==1)
+    {
+        RQ->pcb->TC.push_back(3);
+    }
+    else if(TI==2 && SI==2)
+    {
+        RQ->pcb->IO = 2;
+        RQ_to_IOQ();
+    }
+    else if(TI==2 && SI==3)
+    {
+        RQ->pcb->TC.push_back(0);
+        RQ_to_TQ();
+    }
+
+    if((TI==0 || TI==1) && PI==1);
+    else if((TI==0 || TI==1) && PI==2);
+    else if((TI==0 || TI==1) && PI==3)
+    {
+        if(page_fault)
+        {
+            cout<<"        Valid page fault."<<endl;
+            if(n_available_frames)
+            {
+                int frame_no = allocate();
+                cout<<"        Frame "<<frame_no<<" allocated."<<endl;
+
+                int PTE=(cpu->PTR[0]*1000+cpu->PTR[1]*100+cpu->PTR[2]*10+cpu->PTR[3]) + VA[0];
+
+                for (int j=3; j>=0; j--)
+                {
+                    M[PTE][j] = frame_no%10+48;
+                    frame_no /= 10;
+                }
+
+                cpu->IC[1] -= 1;
+                if(cpu->IC[1]==-1)
+                {
+                    cpu->IC[1]=9;
+                    cpu->IC[0]-=1;
+                }
+            }
+            else
+            {
+                RQ_to_SQ();
+            }
+            page_fault = 0;
+            PI = 0;
+        }
+        else
+        {
+
+        }
+    }
+
     switch(IOI)
     {
+        case(0): break;
         case(1): IR(1); break;
         case(2): IR(2); break;
         case(3): IR(2); IR(1); break;
@@ -443,110 +775,132 @@ void MOS()
         case(7): IR(2); IR(1); IR(3); break;
     }
 
+    SI = 0;
+    TI = 0;
 }
 
 
 void IR(int i)
 {
-    cout<<"     IOI: "<<IOI<<endl;
+    cout<<"    IOI: "<<IOI<<endl;
     if (i==1)
     {
-        string line;
-        getline(input,line);
-        cout<<"     '"<<line<<"' read from file \n";
-
-        for(int i=0; i<line.size() && i<40; i++)
-            S->ebq->buff[i] = line[i];
-
-        S->ebq_to_ifbq();
-
-        S->temp = S->ifbq;
-        while(S->temp->next)
-            S->temp = S->temp->next;
-
-        if(S->temp->buff[0]=='$' && S->temp->buff[1]=='A' && S->temp->buff[2]=='M' && S->temp->buff[3]=='J')
+        cout<<"        IR1:-"<<endl;
+        if(S->ebq)
         {
-            cout<<"     $AMJ encountered ";
+            cout<<"            Empty buffer available for card reading."<<endl;
+            string line;
+            getline(input,line);
+            cout<<"            '"<<line<<"' read from file \n";
 
-            pcb = new PCB;
-            pcb->JOB_ID.push_back(S->temp->buff[4]);
-            pcb->JOB_ID.push_back(S->temp->buff[5]);
-            pcb->JOB_ID.push_back(S->temp->buff[6]);
-            pcb->JOB_ID.push_back(S->temp->buff[7]);
-            pcb->TTL = (S->temp->buff[8]-'0')*1000 + (S->temp->buff[9]-'0')*100 + (S->temp->buff[10]-'0')*10 + (S->temp->buff[11]-'0');
-            pcb->TLL = (S->temp->buff[12]-'0')*1000 + (S->temp->buff[13]-'0')*100 + (S->temp->buff[14]-'0')*10 + (S->temp->buff[15]-'0');
-            pcb->TTC = 0;
-            pcb->LLC = 0;
-            pcb->flag = 'P';
+            for(int i=0; i<line.size() && i<40; i++)
+                S->ebq->buff[i] = line[i];
 
-            int ptr_no = allocate()*10;
+            S->ebq_to_ifbq();
 
-            cout<<"for "<<pcb->JOB_ID<<endl<<"      Frame no. "<<ptr_no<<" allocated for page table of "<<pcb->JOB_ID<<endl;
+            S->temp = S->ifbq;
+            while(S->temp->next)
+                S->temp = S->temp->next;
 
-            pcb->PTR = ptr_no;
-            // Initializing Page table
-            for(int i=ptr_no;i<ptr_no+10;i++)
+            if(S->temp->buff[0]=='$' && S->temp->buff[1]=='A' && S->temp->buff[2]=='M' && S->temp->buff[3]=='J')
             {
-                for(int j=0;j<4;j++)
+                pcb = new PCB;
+                pcb->JOB_ID.push_back(S->temp->buff[4]);
+                pcb->JOB_ID.push_back(S->temp->buff[5]);
+                pcb->JOB_ID.push_back(S->temp->buff[6]);
+                pcb->JOB_ID.push_back(S->temp->buff[7]);
+
+                pcb->TTL = (S->temp->buff[8]-'0')*1000 + (S->temp->buff[9]-'0')*100 + (S->temp->buff[10]-'0')*10 + (S->temp->buff[11]-'0');
+                pcb->TLL = (S->temp->buff[12]-'0')*1000 + (S->temp->buff[13]-'0')*100 + (S->temp->buff[14]-'0')*10 + (S->temp->buff[15]-'0');
+                pcb->TTC = 0;
+                pcb->LLC = 0;
+                pcb->flag = 'P';
+
+                int ptr_no = allocate()*10;
+
+                cout<<"            Frame no. "<<ptr_no<<" allocated for page table of "<<pcb->JOB_ID<<endl;
+
+                pcb->PTR = ptr_no;
+                // Initializing Page table
+                for(int i=ptr_no;i<ptr_no+10;i++)
                 {
-                    M[i][j]='*';
+                    for(int j=0;j<4;j++)
+                    {
+                        M[i][j]='*';
+                    }
                 }
+
+                /*
+                // Initializing PTR
+                for (int j=3; j>=0; j--)
+                {
+                    cpu->PTR[j] = ptr_no%10;
+                    ptr_no /= 10;
+                }
+                */
+                S->last_ifb_to_ebq();
             }
-
-            // Initializing PTR
-            for (int j=3; j>=0; j--)
+            else if(S->temp->buff[0]=='$' && S->temp->buff[1]=='D' && S->temp->buff[2]=='T' && S->temp->buff[3]=='A')
             {
-                cpu->PTR[j] = ptr_no%10;
-                ptr_no /= 10;
+                cout<<"            for job "<<pcb->JOB_ID<<endl;
+                pcb->flag = 'D';
+                S->last_ifb_to_ebq();
             }
-
-            S->last_ifb_to_ebq();
-        }
-        else if(S->temp->buff[0]=='$' && S->temp->buff[1]=='D' && S->temp->buff[2]=='T' && S->temp->buff[3]=='A')
-        {
-            cout<<"     $DTA encountered for "<<pcb->JOB_ID<<endl;
-            pcb->flag = 'D';
-            S->last_ifb_to_ebq();
-        }
-        else if(S->temp->buff[0]=='$' && S->temp->buff[1]=='E' && S->temp->buff[2]=='N' && S->temp->buff[3]=='D')
-        {
-            cout<<"     $END encountered for "<<pcb->JOB_ID<<endl;
-            if(ch3->Task == "")
-                ch3->Task = "IS";
-
-            S->last_ifb_to_ebq();
-
-            if(LQ)
+            else if(S->temp->buff[0]=='$' && S->temp->buff[1]=='E' && S->temp->buff[2]=='N' && S->temp->buff[3]=='D')
             {
-                struct ProgramQueue *temp = LQ;
-                while(temp->next)
-                    temp = temp->next;
-                temp->next = new ProgramQueue;
-                temp->next->pcb = pcb;
+                if(LQ)
+                {
+                    struct ProgramQueue *temp = LQ;
+                    while(temp->next)
+                        temp = temp->next;
+                    temp->next = new ProgramQueue;
+                    temp->next->pcb = pcb;
+                }
+                else
+                {
+                    LQ = new ProgramQueue;
+                    LQ->pcb = pcb;
+                }
+
+                S->last_ifb_to_ebq();
+
             }
             else
             {
-                LQ = new ProgramQueue;
-                LQ->pcb = pcb;
+                if(pcb->flag == 'P')
+                {
+                    cout<<"            Program card encountered for "<<pcb->JOB_ID<<endl;
+                    pcb->n_ProgramCard++;
+                    pcb->n_ProgramCard_copy++;
+                }
+                else if (pcb->flag == 'D')
+                {
+                    cout<<"            Data card encountered for "<<pcb->JOB_ID<<endl;
+                    pcb->n_DataCard++;
+                    pcb->n_DataCard_copy++;
+                }
+                if(ch3->flag==0)
+                {
+                    IOI+=4;
+                    ch3->startChannel();
+                    ch3->Task = "IS";
+                }
             }
         }
         else
         {
-            if(pcb->flag == 'P')
-            {
-                cout<<"     Program card encountered for "<<pcb->JOB_ID<<endl;
-                pcb->n_ProgramCard++;
-                pcb->n_ProgramCard_copy++;
-            }
-            else if (pcb->flag == 'D')
-            {
-                cout<<"     Data card encountered for "<<pcb->JOB_ID<<endl;
-                pcb->n_DataCard++;
-                pcb->n_DataCard_copy++;
-            }
+            cout<<"            Empty buffer not available for card reading."<<endl;
         }
 
-        IOI -= 1;
+        if(input.eof())
+        {
+            ch1->startChannel();    // To decrement IOI by 1
+            ch1->stopChannel();
+        }
+        else if(!S->ebq)
+            ch1->stopChannel();     // Temporarily stop CH1 till empty buffer is avlbl
+        else
+            ch1->startChannel();
     }
     else if(i==2)
     {
@@ -554,59 +908,79 @@ void IR(int i)
     }
     else if(i==3)
     {
+        // Complete the assigned task
+        cout<<"        IR3:-"<<endl;
+        cout<<"            Current task: "<<ch3->Task<<endl;
+
         if(ch3->Task == "IS")
         {
-            if(LQ->pcb->n_ProgramCard_copy !=0)
-            { //Program card is to be spooled
-                if (LQ->pcb->T_ProgramCard == -10)
-                    LQ->pcb->T_ProgramCard = Track_no;
-
-                for(int i=Track_no, k=0; k<40 && i<Track_no+10; i++)
+            char spool;
+            int track = -1;
+            for(int i=0; i<50; i++)
+            {
+                if(drum[i*10][0] == '-')
                 {
-                    for(int j=0;j<4;j++)
-                    {
-                        drum[i][j] = S->ifbq->buff[k++];
-
-                    /*    if(drum[i][j]=='H')
-                        break;
-                   */ }
+                    track = i*10;
+                    break;
                 }
-                pcb->n_ProgramCard_copy--;
-
-                cout<<"     Program card spooled for job "<<LQ->pcb->JOB_ID<<endl;
-
-                S->first_ifb_to_ebq();
-
-                Track_no  += 10;
-
-                if (Track_no == 50)
-                    Track_no = 0;
             }
-            else if(LQ->pcb->n_DataCard_copy !=0)
-            { //Data card is to be spooled
 
-                if (LQ->pcb->T_DataCard == -10)
-                    LQ->pcb->T_DataCard = Track_no;
+            if(track == -1)
+            {
+                cout<<"               Drum is full."<<endl;
+            }
+            else
+            {
+                if(pcb->n_ProgramCard_copy !=0)
+                {
+                    //Program card is to be spooled
+                    pcb->T_ProgramCard.push_back(track);
 
-                for(int i=Track_no, k=0; k<40 && i<Track_no+10; i++)
+                    spool = 'P';
+                    cout<<"                Program card ";
+                }
+                else if(pcb->n_DataCard_copy !=0)
+                {
+                    //Data card is to be spooled
+                    pcb->T_DataCard.push_back(track);
+
+                    spool = 'D';
+
+                    cout<<"                Data card  ";
+                }
+
+                for(int i=track, k=0; k<40 && i<track+10; i++)
                 {
                     for(int j=0;j<4;j++)
                     {
                         drum[i][j] = S->ifbq->buff[k++];
+                        cout<<drum[i][j];
+
+                        if(spool == 'P' && drum[i][j]=='H')
+                            break;
                     }
                 }
-                pcb->n_DataCard_copy--;
 
-                cout<<"     Data card spooled for job "<<LQ->pcb->JOB_ID<<endl;
+                if(spool == 'P')
+                    pcb->n_ProgramCard_copy--;
+                else
+                    pcb->n_DataCard_copy--;
+
+                cout<<" spooled for job "<<pcb->JOB_ID<<endl;
 
                 S->first_ifb_to_ebq();
+                n_available_tracks--;
 
-                Track_no  += 10;
-
-                if (Track_no == 50)
-                    Track_no = 0;
-
-                if(drum[Track_no][0]!='-') cout<<"      Drum if full now."<<endl;
+                if(pcb->n_DataCard_copy == 0)
+                    cout<<"                Input spooling is complete for "<<pcb->JOB_ID<<"."<<endl;
+                /*for(int i=0; i<500;i++)
+                {
+                    for(int j=0; j<4;j++)
+                        cout<<drum[i][j];
+                    cout<<endl;
+                }
+                cout<<endl;
+                */
             }
         }
         else if (ch3->Task == "OS"){}
@@ -617,20 +991,21 @@ void IR(int i)
             pt_last_row--;
 
             int frame_no = (M[pt_last_row][2]-'0')*10 + (M[pt_last_row][3]-'0');
-            int track_no = LQ->pcb->T_ProgramCard;
-            for(int i=frame_no*10 ; i<frame_no*10+10; i++, track_no++)
+            int track = LQ->pcb->T_ProgramCard.front();
+
+            cout<<"                Program card ";
+            for(int i=frame_no*10 ; i<frame_no*10+10; i++, track++)
                 for(int k=0; k<4; k++)
-                    M[i][k] = drum[track_no][k];
+                {
+                    M[i][k] = drum[track][k];
+                    drum[track][k] = '-';
+                    cout<<M[i][k];
+                }
+            cout<<" loaded for job "<<LQ->pcb->JOB_ID<<endl;
 
             LQ->pcb->n_ProgramCard--;
-
-            for(int i=pcb->T_ProgramCard; i<10; i++)
-                for (int j=0; j<4; j++)
-                    drum[i][j] = '-';
-
-            LQ->pcb->T_ProgramCard+=10;
-
-            cout<<"     Program card loaded for job "<<LQ->pcb->JOB_ID<<endl;
+            n_available_tracks++;
+            LQ->pcb->T_ProgramCard.erase(LQ->pcb->T_ProgramCard.begin());
 
             if (LQ->pcb->n_ProgramCard == 0)
             {
@@ -654,17 +1029,85 @@ void IR(int i)
                 cout<<endl<<endl<<endl;
             }
         }
-        else if (ch3->Task == "RD"){}
-        else if (ch3->Task == "WT"){}
-
-
-        if(TQ && S->ebq)
+        else if (ch3->Task == "GD")
         {
+            int track = IOQ->pcb->T_DataCard.front();
+            IOQ->pcb->T_DataCard.erase(IOQ->pcb->T_DataCard.begin());
 
+            //Get the block no for GD
+            int VA = IOQ->pcb->IC-1;
+            int PTE = IOQ->pcb->PTR + VA/10;
+            RA = ((M[PTE][0]-'0')*1000 + (M[PTE][1]-'0')*100 + (M[PTE][2]-'0')*10 + (M[PTE][3]-'0')) *10 +( VA%10);
+
+            int block = (M[RA][2]-'0')*10 + (M[RA][3]-'0');
+
+            VA = block;
+            PTE = IOQ->pcb->PTR + VA/10;
+            RA = ((M[PTE][0]-'0')*1000 + (M[PTE][1]-'0')*100 + (M[PTE][2]-'0')*10 + (M[PTE][3]-'0')) *10 +( VA%10);
+
+            cout<<"                Data card ";
+            for(int i=RA ; i<RA+10; i++, track++)
+                for(int k=0; k<4; k++)
+                {
+                    M[i][k] = drum[track][k];
+                    cout<<M[i][k];
+                    drum[track][k] = '-';
+                }
+            cout<<" read for job "<<IOQ->pcb->JOB_ID<<endl;
+
+            n_available_tracks++;
+            IOQ_to_RQ();
         }
-        else if (S->ifbq && drum[Track_no][0]=='-')
+        else if (ch3->Task == "PD")
+        {
+            int track = -1;
+            for(int i=0; i<50; i++)
+            {
+                if(drum[i*10][0] == '-')
+                {
+                    track = i*10;
+                    break;
+                }
+            }
+            IOQ->pcb->T_OutputLines.push_back(track);
+
+            //Get the block no for PD
+            int VA = IOQ->pcb->IC-1;
+            int PTE = IOQ->pcb->PTR + VA/10;
+            RA = ((M[PTE][0]-'0')*1000 + (M[PTE][1]-'0')*100 + (M[PTE][2]-'0')*10 + (M[PTE][3]-'0')) *10 +( VA%10);
+
+            int block = (M[RA][2]-'0')*10 + (M[RA][3]-'0');
+
+            VA = block;
+            PTE = IOQ->pcb->PTR + VA/10;
+            RA = ((M[PTE][0]-'0')*1000 + (M[PTE][1]-'0')*100 + (M[PTE][2]-'0')*10 + (M[PTE][3]-'0')) *10 +( VA%10);
+
+            cout<<"                Data card ";
+            for(int i=RA ; i<RA+10; i++, track++)
+                for(int k=0; k<4; k++)
+                {
+                    drum[track][k] = M[i][k];
+                    cout<<M[i][k];
+                }
+            cout<<" print to drum for job "<<IOQ->pcb->JOB_ID<<endl;
+
+            n_available_tracks--;
+            IOQ->pcb->LLC++;
+
+            if(TI == 2)
+                IOQ_to_TQ();
+            else
+                IOQ_to_RQ();
+        }
+
+
+        // Assign new task in priority order
+        cout<<endl<<"            Next task:-";
+        if(TQ && S->ebq){ch3->startChannel();}
+        else if (S->ifbq && n_available_tracks)
         {
             ch3->Task="IS";
+            cout<<" IS"<<endl;
         }
         else if (LQ && n_available_frames)
         {
@@ -672,7 +1115,7 @@ void IR(int i)
 
             int k=LQ->pcb->PTR;
 
-            for(; M[k][3]!='*'; k++) ;//cout<<k<<" "<<M[k][3]<<endl;
+            for(; M[k][3]!='*'; k++) ;
 
             for (int j=3; j>=0; j--)
             {
@@ -680,28 +1123,77 @@ void IR(int i)
                 frame_no /= 10;
             }
 
-
             ch3->Task = "LD";
+            cout<<" LD"<<endl;
         }
-        IOI -= 4;
+        else if(IOQ && ((IOQ->pcb->IO == 2)?n_available_tracks:1))
+        {
+            if(IOQ->pcb->IO == 1)
+            {
+                if(IOQ->pcb->T_DataCard.empty())
+                {
+                    IOQ->pcb->TC.push_back(3);
+                    IOQ_to_TQ();
+                }
+                else
+                {
+                    ch3->Task = "GD";
+                    cout<<" GD"<<endl;
+                }
+            }
+            else if(IOQ->pcb->IO == 2)
+            {
+                if(IOQ->pcb->LLC > IOQ->pcb->TLL)
+                {
+                    IOQ->pcb->TC.push_back(2);
+                    IOQ_to_TQ();
+                }
+                else
+                {
+                    ch3->Task = "PD";
+                    cout<<" PD"<<endl;
+                }
+            }
+        }
+        else
+        {
+            ch3->Task="";
+            cout<<endl;
+        }
+        ch3->startChannel();    // To decrement IOI by 4
     }
 }
 
-void startExecution()
-{
-    cpu->IC[0]=0;
-    cpu->IC[1]=0;
-    executeUserProgram();
-}
 
 void executeUserProgram()
 {
+    if(!RQ)
+    {
+        cpu->TSC = 0;
+        return;
+    }
+
+    if(cpu->IC[0]=='-' && cpu->IC[1]=='-')
+    {
+        cpu->IC[1] = RQ->pcb->IC%10;
+        cpu->IC[0] = RQ->pcb->IC/10;
+
+        cpu->PTR[3] = RQ->pcb->PTR%10;
+        cpu->PTR[2] = RQ->pcb->PTR/10%10;
+        cpu->PTR[1] = RQ->pcb->PTR/100%10;
+        cpu->PTR[0] = 0;
+
+        cpu->TSC = 1;
+    }
+
     VA[0] = cpu->IC[0];
     VA[1] = cpu->IC[1];
     addressMap();
 
     if (PI!=0)
-        MOS();
+    {
+        return;
+    }
 
     for(int i=0;i<4;i++)
     {
@@ -715,43 +1207,36 @@ void executeUserProgram()
         cpu->IC[0]+=1;
     }
 
-    cout<<cpu->IR[0]<<cpu->IR[1]<<cpu->IR[2]<<cpu->IR[3]<<endl;
+    cout<<"    CPU:"<<endl;
+    cout<<"        Job: "<<RQ->pcb->JOB_ID<<endl;
+    cout<<"        IC: "<<cpu->IC[0]<<cpu->IC[1]<<endl;
+    cout<<"        IR: "<<cpu->IR[0]<<cpu->IR[1]<<cpu->IR[2]<<cpu->IR[3]<<endl;
+    cout<<"        TSC: "<<cpu->TSC<<endl;
+
+    VA[0] = cpu->IR[2]-'0';
+    VA[1] = cpu->IR[3]-'0';
+    addressMap();
+
+    if(PI == 3)
+    {
+        if(cpu->IR[0]=='G' && cpu->IR[1]=='D' || cpu->IR[0]=='S' && cpu->IR[1]=='R')
+            page_fault = 1;
+        return;
+    }
+    if(PI == 2) return;
 
     if(cpu->IR[0]=='G' && cpu->IR[1]=='D')
     {
-        if('0'<=cpu->IR[3] && cpu->IR[3]<='9')
-            cpu->IR[3] = '0';
-        VA[0] = cpu->IR[2]-'0';
-        VA[1] = cpu->IR[3]-'0';
-        addressMap();
-
-        if(PI == 3)
-            page_fault = 1;
-
+        cpu->IR[3] = '0';
         SI=1;
-
-        MOS();
     }
-
     else if(cpu->IR[0]=='P' && cpu->IR[1]=='D')
     {
-        if('0'<=cpu->IR[3] && cpu->IR[3]<='9')
-            cpu->IR[3] = '0';
-        VA[0] = cpu->IR[2]-'0';
-        VA[1] = cpu->IR[3]-'0';
-        addressMap();
-
         SI=2;
-        MOS();
     }
-
-    else if(cpu->IR[0]=='H')
-    {
-        SI=3;
-
-        MOS();
-    }
+    cout<<endl;
 }
+
 
 void addressMap()
 {
@@ -777,6 +1262,13 @@ void addressMap()
     }
 }
 
+
+void Terminate(int EC1, int EC2)
+{
+
+}
+
+
 main()
 {
     input.open("input.txt",ios::in);
@@ -784,38 +1276,18 @@ main()
     srand(time(0));
 
     init();
-    int i=1;
+    ch1->startChannel();
 
     do
-    { cout<<"--------------"<<i<<"--------------"<<endl;
+    {
+        cout<<"------------------------------------------"<<Timer<<"------------------------------------------"<<endl;
 
-        if(!input.eof())
-            ch1->startChannel();
-        else
-            ch1->stopChannel();
-
-        if(LQ)
-            ch3->startChannel();
-        else
-            {ch3->stopChannel(); ch3->Task="";}
-
-     /*   if (RQ)
-        {
-            if(cpu->IC[0]=='-' && cpu->IC[1]=='-')
-                simulation();
-            else
-                executeUserProgram();
-        }
-    */
-
+        executeUserProgram();
         simulation();
         MOS();
-        cout<<"     IOI: "<<IOI<<endl<<endl;
-        i++;
+        cout<<"    IOI: "<<IOI<<endl<<endl;
 
-    }while(ch1->flag!=0 || ch3->flag!=0);
-
-
+    }while(/*ch1->flag!=0 || S->ifbq || S->ofbq || LQ || RQ || IOQ || TQ || SQ */ Timer<50);
 
     input.close();
     output.close();
