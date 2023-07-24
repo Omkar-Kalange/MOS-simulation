@@ -300,7 +300,7 @@ void executeUserProgram()
             cpu->IC[0]+=1;
         }
 
-        cout<<cpu->IR[0]<<cpu->IR[1]<<cpu->IR[2]<<cpu->IR[3]<<endl;
+        cout<<pcb->TTC<<": "<<cpu->IR[0]<<cpu->IR[1]<<cpu->IR[2]<<cpu->IR[3]<<endl;
 
         if(cpu->IR[0]=='G' && cpu->IR[1]=='D')
         {
@@ -314,8 +314,8 @@ void executeUserProgram()
                 page_fault = 1;
 
             SI=1;
-
             MOS();
+            simulation();
         }
 
         else if(cpu->IR[0]=='P' && cpu->IR[1]=='D')
@@ -328,6 +328,7 @@ void executeUserProgram()
 
             SI=2;
             MOS();
+            simulation();
         }
 
         else if(cpu->IR[0]=='L' && cpu->IR[1]=='R')
@@ -346,7 +347,6 @@ void executeUserProgram()
                 {
                     cpu->R[i]=M[RA][i];
                 }
-
                 simulation();
             }
         }
@@ -372,7 +372,6 @@ void executeUserProgram()
                 {
                     M[RA][i]=cpu->R[i];
                 }
-
                 simulation();
             }
         }
@@ -421,7 +420,6 @@ void executeUserProgram()
             {
                 cpu->IC[0]=cpu->IR[2]-'0';
                 cpu->IC[1]=cpu->IR[3]-'0';
-
                 simulation();
             }
         }
@@ -430,6 +428,7 @@ void executeUserProgram()
         {
             SI=3;
 
+            simulation();
             MOS();
             break;
         }
@@ -439,6 +438,7 @@ void executeUserProgram()
             MOS();
             break;
         }
+
     }
 }
 
@@ -540,9 +540,6 @@ void MOS()
                 }
 
                 page_fault = 0;
-                PI = 0;
-
-                simulation();
             }
             else
             {
@@ -565,15 +562,11 @@ void MOS()
             {
                 EM = 1;
                 Terminate();
-                input.seekg(-8,ios::cur);
             }
 
             else
             {
                 loadtoMemory(RA);
-
-                SI = 0;
-                simulation();
             }
         }
 
@@ -595,17 +588,11 @@ void MOS()
                     }
                 }
                 output<<endl;
-
-                SI = 0;
-                simulation();
             }
         }
 
         else if(SI==3)
         {
-            simulation();
-            SI = 0;
-
             EM = 0;
             Terminate();
         }
@@ -662,10 +649,14 @@ void MOS()
                     }
                 }
                 output<<endl;
-
-                simulation();
             }
             EM=3;
+            Terminate();
+        }
+
+        else if(SI==3)
+        {
+            EM = 0;
             Terminate();
         }
 
@@ -675,6 +666,10 @@ void MOS()
             Terminate();
         }
     }
+
+    SI = 0;
+    TI = 0;
+    PI = 0;
 }
 
 
