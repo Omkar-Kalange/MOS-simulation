@@ -1,0 +1,54 @@
+VIT-------------------------------------
+VIT-------------------------------------
+IS SAME---------------------------------
+Normal Termination----------------------
+IC:13, TTL:15, TTC:15, TLL:3, LLC:3-----
+
+
+VIT-------------------------------------
+VIT-------------------------------------
+Abnormal Termination: Time Lim. Exceeded
+IC:8, TTL:12, TTC:12, TLL:3, LLC:2------
+
+
+Abnormal Termination: Time Lim. Exceeded
+Abnormal Termination: Line Lim. Exceeded
+IC:7, TTL:11, TTC:11, TLL:0, LLC:1------
+
+
+Abnormal Termination: OpCode Error------
+IC:5, TTL:13, TTC:9, TLL:3, LLC:0-------
+
+
+Abnormal Termination: Invalid Page Fault
+IC:7, TTL:15, TTC:11, TLL:3, LLC:0------
+
+
+Abnormal Termination: Time Lim. Exceeded
+Abnormal Termination: Operand Error-----
+IC:5, TTL:9, TTC:9, TLL:3, LLC:0--------
+
+
+Abnormal Termination: Out Of Data-------
+IC:4, TTL:15, TTC:8, TLL:3, LLC:0-------
+
+
+VIT-------------------------------------
+VIT-------------------------------------
+IS SAME---------------------------------
+NOT SAME--------------------------------
+Abnormal Termination: Time Lim. Exceeded
+Abnormal Termination: Invalid Page Fault
+IC:10, TTL:15, TTC:15, TLL:4, LLC:4-----
+
+
+--------..O-----------------------------
+--------O---O---------------------------
+----O---O---O---O-----------------------
+----O-----------O-----------------------
+----O-----------O-----------------------
+----O---O---O---O-----------------------
+Normal Termination----------------------
+IC:20, TTL:29, TTC:25, TLL:10, LLC:6----
+
+
